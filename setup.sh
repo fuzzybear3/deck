@@ -48,3 +48,21 @@ sudo systemctl start sshd
 sudo systemctl enable sshd
 
 
+git clone https://github.com/fuzzybear3/deck.git
+
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+sudo steamos-readonly disable
+
+sudo pacman-key --init
+sudo pacman-key --populate archlinux holo
+
+sudo pacman -Syu
+
+sudo pacman -S base-devel
+
+sudo pacman -Sy --needed pkgconf alsa-lib
+
+sudo pacman -S --overwrite='*' --noconfirm alsa-lib
+
+sudo pacman -S --overwrite='*' --noconfirm systemd-libs
