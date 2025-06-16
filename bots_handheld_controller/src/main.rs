@@ -63,21 +63,21 @@ fn camera_control(
 ) {
     if keyboard_input.just_pressed(KeyCode::Digit1) {
         if let Ok(mut cam) = q_camera.single_mut() {
-            info!("start stream");
+            // info!("start stream");
             cam.open_stream().unwrap();
         }
     }
 
     if keyboard_input.just_pressed(KeyCode::Digit2) {
         if let Ok(mut cam) = q_camera.single_mut() {
-            info!("stop stream");
+            // info!("stop stream");
             cam.stop_stream().unwrap();
         }
     }
 
     if keyboard_input.just_pressed(KeyCode::Digit3) {
         if let Ok(mut cam) = q_camera.single_mut() {
-            info!("change capture resolution to 1920x1080 30fps");
+            // info!("change capture resolution to 1920x1080 30fps");
             cam.set_camera_format(CameraFormat::new_from(1920, 1080, FrameFormat::MJPEG, 30))
                 .unwrap();
         }
@@ -85,10 +85,9 @@ fn camera_control(
 
     if keyboard_input.just_pressed(KeyCode::Digit4) {
         if let Ok(mut cam) = q_camera.single_mut() {
-            info!("change capture resolution to 640x480 30fps");
+            // info!("change capture resolution to 640x480 30fps");
             cam.set_camera_format(CameraFormat::new_from(640, 480, FrameFormat::MJPEG, 30))
                 .unwrap();
         }
     }
 }
-
