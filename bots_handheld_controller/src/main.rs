@@ -83,37 +83,79 @@ fn setup(
     ));
 }
 
-fn setup_gst_pipeline() -> Result<gst_app::AppSink, Box<dyn std::error::Error>> {
-    gst::init()?; // must be called before using GStreamer
-
-    let pipeline = gst::parse::launch(
-        "videotestsrc ! videoconvert ! video/x-raw,format=RGBA,width=640,height=480 ! appsink name=sink",
-    )?;
-
-    let pipeline = pipeline.downcast::<gst::Pipeline>().unwrap();
-    let appsink = pipeline
-        .by_name("sink")
-        .expect("Sink element not found")
-        .downcast::<gst_app::AppSink>()
-        .expect("Element is not an appsink");
-
-    appsink.set_property("emit-signals", &true);
-    appsink.set_property("sync", &false);
-
-    pipeline.set_state(gst::State::Playing)?;
-
-    Ok(appsink)
-}
+// fn setup_gst_pipeline() -> Result<gst_app::AppSink, Box<dyn std::error::Error>> {
+//     gst::init()?; // must be called before using GStreamer
+//
+//     let pipeline = gst::parse::launch(
+//         "videotestsrc ! videoconvert ! video/x-raw,format=RGBA,width=640,height=480 ! appsink name=sink",
+//     )?;
+//
+//     let pipeline = pipeline.downcast::<gst::Pipeline>().unwrap();
+//     let appsink = pipeline
+//         .by_name("sink")
+//         .expect("Sink element not found")
+//         .downcast::<gst_app::AppSink>()
+//         .expect("Element is not an appsink");
+//
+//     appsink.set_property("emit-signals", &true);
+//     appsink.set_property("sync", &false);
+//
+//     pipeline.set_state(gst::State::Playing)?;
+//
+//     Ok(appsink)
+// }
 
 fn start_gst_pipeline(shared: SharedFrame) {
     gst::init().unwrap();
 
-    let pipeline = gst::parse::launch(
-        "videotestsrc ! videoconvert ! video/x-raw,format=RGBA,width=640,height=480 ! appsink name=sink",
-    )
-    .unwrap()
-    .downcast::<gst::Pipeline>()
-    .unwrap();
+    // let pipeline = gst::parse::launch(
+    //     // "videotestsrc ! videoconvert ! video/x-raw,format=RGBA,width=640,height=480 ! appsink name=sink",
+    //     //    "udpsrc port=5000 caps=\
+    //     // "video/x-raw,format=RGBA,width=640,height=480,framerate=30/1\" ! \
+    //     // appsink name=sink",
+    //     //    "video/x-raw,format=RGBA, encoding-name=H264 ,width=640,height=480,framerate=30/1\" ! \
+    //     // appsink name=sink",
+    //     // "udpsrc port=5000 caps=\"application/x-rtp,media=video,encoding-name=H264,payload=96\"
+    //     // ! rtph264depay ! avdec_h264 ! videoconvert ! video/x-raw,format=RGBA,width=640,height=480 ! appsink name=sink"
+    //     "\
+    // udpsrc port=5000 caps=\
+    //   \"application/x-rtp,media=video,encoding-name=H264,payload=96\" ! \
+    // rtph264depay ! avdec_h264 ! videoconvert ! \
+    // video/x-raw,format=RGBA,width=640,height=480 ! \
+    // appsink name=sink",
+    // )
+    // .unwrap()
+    // .downcast::<gst::Pipeline>()
+    // .unwrap();
+    //
+    // let appsink = pipeline
+    //     .by_name("sink")
+    //     .unwrap()
+    //     .downcast::<gst_app::AppSink>()
+    //     .unwrap();
+    //
+    // appsink.set_property("emit-signals", &true);
+    // appsink.set_property("sync", &false);
+
+    // let pipeline_str = "\
+    //      udpsrc port=5000 caps=\
+    //       \"application/x-rtp,media=video,encoding-name=H264,payload=96\" ! \
+    //     rtph264depay ! avdec_h264 ! videoconvert ! \
+    //     video/x-raw,format=RGBA,width=640,height=480 ! \
+    //     appsink name=sink";
+
+    let pipeline_str = "\
+  udpsrc port=5000 caps=\
+    \"application/x-rtp,media=video,encoding-name=H264,\
+      payload=96,clock-rate=90000,packetization-mode=1\" ! \
+  rtph264depay ! avdec_h264 ! videoconvert ! \
+  video/x-raw,format=RGBA,width=640,height=480 ! \
+  appsink name=sink";
+
+    let pipeline = gst::parse::launch(pipeline_str)
+        .unwrap()
+        .downcast::<gst::Pipeline>()
+        .unwrap();
 
     let appsink = pipeline
         .by_name("sink")
@@ -124,17 +166,32 @@ fn start_gst_pipeline(shared: SharedFrame) {
     appsink.set_property("emit-signals", &true);
     appsink.set_property("sync", &false);
 
-    // // Whenever a new sample arrives, copy it into the shared buffer
-    // appsink.connect_new_sample(move |sink| {
-    //     let sample = sink.pull_sample().unwrap();
-    //     let buffer = sample.buffer().unwrap();
-    //     let map = buffer.map_readable().unwrap();
-    //     let data = map.as_slice();
-    //
-    //     let mut guard = shared.0.lock().unwrap();
-    //     *guard = Some(data.to_vec());
-    //     gst::FlowSuccess::Ok
-    // });
+    appsink.set_callbacks(
+        gst_app::AppSinkCallbacks::builder()
+            .new_sample(|s| {
+                let sample = s.pull_sample().unwrap();
+                let buffer = sample.buffer().unwrap();
+                let pts = buffer.pts().unwrap();
+                println!("sample @ {:?}", pts);
+                Ok(gst::FlowSuccess::Ok)
+            })
+            .build(),
+    );
+
+    // ── Also print bus errors / state changes ───────────────────────────
+    let bus = pipeline.bus().unwrap();
+    pipeline.set_state(gst::State::Playing).unwrap();
+
+    for msg in bus.iter_timed(gst::ClockTime::NONE) {
+        use gst::MessageView::*;
+        match msg.view() {
+            Error(e) => eprintln!("BUS ERROR {:?}", e.error()),
+            StateChanged(s) if s.src().map(|s| s == &pipeline).unwrap_or(false) => {
+                println!("state to {:?}", s.current());
+            }
+            _ => {}
+        }
+    }
 
     appsink.set_callbacks(
         AppSinkCallbacks::builder()
@@ -146,7 +203,7 @@ fn start_gst_pipeline(shared: SharedFrame) {
 
                 let mut guard = shared.0.lock().unwrap();
                 *guard = Some(bytes.to_vec());
-
+                println!("test");
                 Ok(gst::FlowSuccess::Ok)
             })
             .build(),
@@ -177,3 +234,4 @@ fn upload_frame(
         }
     }
 }
+
