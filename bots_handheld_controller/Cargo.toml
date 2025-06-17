@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-# bevy = "0.16.1"
-bevy = { version = "0.16.1", default-features = false, features = ["x11"] }
+anyhow = "1.0.98"
+bevy = "0.16.1"
+# bevy = { version = "0.16.1", default-features = false, features = ["x11"] }
 bevy_gstreamer = "0.7.0"
+gstreamer = "0.23.6"
+gstreamer-app = "0.23.5"
+gstreamer-video = "0.23.6"

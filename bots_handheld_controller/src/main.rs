@@ -1,93 +1,92 @@
-use bevy::prelude::*;
+use bevy::{color::palettes::basic::PURPLE, prelude::*};
 
-use bevy_gstreamer::GstreamerPlugin;
-use bevy_gstreamer::camera::{BackgroundImageMarker, GstCamera};
-use bevy_gstreamer::types::{CameraFormat, FrameFormat};
+use gstreamer::prelude::*;
+use gstreamer::prelude::{Cast, ElementExt};
+use gstreamer_app::AppSink;
+// use gstreamer_app::prelude::AppSinkExt;
+
+use gstreamer as gst;
+use gstreamer_app as gst_app;
+use gstreamer_video as gst_video;
+use std::sync::{Arc, Mutex};
 
 fn main() {
-    App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "gstreamer capture".into(),
-                resolution: (640., 480.).into(),
+    gstreamer::init().expect("Failed to initialize GStreamer");
 
-                ..default()
-            }),
-            ..default()
-        }))
-        .add_plugins(GstreamerPlugin)
-        .add_systems(Startup, setup_camera)
-        .add_systems(Update, camera_control)
+    App::new()
+        .add_plugins(DefaultPlugins)
+        .add_systems(Startup, setup)
         .run();
 }
 
-fn setup_camera(
+#[derive(Resource)]
+struct VideoFrameHandle(Handle<Image>);
+
+use bevy::asset::*;
+use bevy::image::ImageSampler;
+use bevy::render::render_resource::Extent3d;
+use bevy::render::render_resource::*;
+
+fn setup(
     mut commands: Commands,
+    mut images: ResMut<Assets<Image>>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
-    let mut camera = GstCamera::new(
-        0,
-        Some(CameraFormat::new_from(640, 480, FrameFormat::MJPEG, 30)),
-    )
-    .expect("cannot find any camera");
+    commands.spawn(Camera2d);
 
-    camera.open_stream().unwrap();
-    commands.spawn((camera, BackgroundImageMarker));
+    // Create an empty RGBA8 texture (placeholder)
+    let size = Extent3d {
+        width: 640,
+        height: 480,
+        depth_or_array_layers: 1,
+    };
 
-    // cube
+    let mut image = Image::new_fill(
+        size,
+        TextureDimension::D2,
+        &[0, 0, 0, 255],
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    );
+    image.sampler = ImageSampler::nearest();
+
+    let image_handle = images.add(image);
+    commands.insert_resource(VideoFrameHandle(image_handle.clone()));
+
     commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
-        MeshMaterial3d(materials.add(Color::srgb_u8(124, 144, 255))),
-        Transform::from_xyz(0.0, 0.5, 0.0),
+        Sprite::from_image(image_handle.clone()),
+        Transform::from_scale(Vec3::splat(1.0)),
     ));
 
-    // light
+    /* --- store the handle so another system / thread can write pixels ---- */
+    // commands.insert_resource(VideoTex(tex_handle));
+
     commands.spawn((
-        PointLight {
-            shadows_enabled: true,
-            ..default()
-        },
-        Transform::from_xyz(4.0, 8.0, 4.0),
-    ));
-    // camera
-    commands.spawn((
-        Camera3d::default(),
-        Transform::from_xyz(-2.5, 4.5, 9.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Mesh2d(meshes.add(Rectangle::default())),
+        MeshMaterial2d(materials.add(Color::from(PURPLE))),
+        Transform::default().with_scale(Vec3::splat(128.)),
     ));
 }
 
-fn camera_control(
-    keyboard_input: Res<ButtonInput<KeyCode>>,
-    mut q_camera: Query<&mut GstCamera, With<BackgroundImageMarker>>,
-) {
-    if keyboard_input.just_pressed(KeyCode::Digit1) {
-        if let Ok(mut cam) = q_camera.single_mut() {
-            // info!("start stream");
-            cam.open_stream().unwrap();
-        }
-    }
+fn setup_gst_pipeline() -> Result<gst_app::AppSink, Box<dyn std::error::Error>> {
+    gst::init()?; // must be called before using GStreamer
 
-    if keyboard_input.just_pressed(KeyCode::Digit2) {
-        if let Ok(mut cam) = q_camera.single_mut() {
-            // info!("stop stream");
-            cam.stop_stream().unwrap();
-        }
-    }
+    let pipeline = gst::parse::launch(
+        "videotestsrc ! videoconvert ! video/x-raw,format=RGBA,width=640,height=480 ! appsink name=sink",
+    )?;
 
-    if keyboard_input.just_pressed(KeyCode::Digit3) {
-        if let Ok(mut cam) = q_camera.single_mut() {
-            // info!("change capture resolution to 1920x1080 30fps");
-            cam.set_camera_format(CameraFormat::new_from(1920, 1080, FrameFormat::MJPEG, 30))
-                .unwrap();
-        }
-    }
+    let pipeline = pipeline.downcast::<gst::Pipeline>().unwrap();
+    let appsink = pipeline
+        .by_name("sink")
+        .expect("Sink element not found")
+        .downcast::<gst_app::AppSink>()
+        .expect("Element is not an appsink");
 
-    if keyboard_input.just_pressed(KeyCode::Digit4) {
-        if let Ok(mut cam) = q_camera.single_mut() {
-            // info!("change capture resolution to 640x480 30fps");
-            cam.set_camera_format(CameraFormat::new_from(640, 480, FrameFormat::MJPEG, 30))
-                .unwrap();
-        }
-    }
+    appsink.set_property("emit-signals", &true);
+    appsink.set_property("sync", &false);
+
+    pipeline.set_state(gst::State::Playing)?;
+
+    Ok(appsink)
 }
