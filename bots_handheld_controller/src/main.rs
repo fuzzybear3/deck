@@ -55,7 +55,7 @@ fn setup(
     let mut image = Image::new_fill(
         size,
         TextureDimension::D2,
-        &[0, 50, 0, 255],
+        &[0, 0, 0, 255],
         TextureFormat::Rgba8UnormSrgb,
         RenderAssetUsages::default(),
     );
@@ -144,12 +144,20 @@ fn start_gst_pipeline(shared: SharedFrame) {
     //     video/x-raw,format=RGBA,width=640,height=480 ! \
     //     appsink name=sink";
 
+    //   let pipeline_str = "\
+    // udpsrc port=5000 caps=\
+    //   \"application/x-rtp,media=video,encoding-name=H264,\
+    //     payload=96,clock-rate=90000,packetization-mode=1\" ! \
+    // rtph264depay ! avdec_h264 ! videoconvert ! \
+    // video/x-raw,format=RGBA,width=640,height=480 ! \
+    // appsink name=sink";
+
     let pipeline_str = "\
   udpsrc port=5000 caps=\
     \"application/x-rtp,media=video,encoding-name=H264,\
       payload=96,clock-rate=90000,packetization-mode=1\" ! \
   rtph264depay ! avdec_h264 ! videoconvert ! \
-  video/x-raw,format=RGBA,width=640,height=480 ! \
+  video/x-raw,format=RGBA ! \
   appsink name=sink";
 
     let pipeline = gst::parse::launch(pipeline_str)
@@ -166,13 +174,16 @@ fn start_gst_pipeline(shared: SharedFrame) {
     appsink.set_property("emit-signals", &true);
     appsink.set_property("sync", &false);
 
+    let shared_clone = shared.clone(); // capture once
     appsink.set_callbacks(
         gst_app::AppSinkCallbacks::builder()
-            .new_sample(|s| {
-                let sample = s.pull_sample().unwrap();
+            .new_sample(move |sink| {
+                let sample = sink.pull_sample().unwrap();
                 let buffer = sample.buffer().unwrap();
-                let pts = buffer.pts().unwrap();
-                println!("sample @ {:?}", pts);
+                let map = buffer.map_readable().unwrap();
+
+                *shared_clone.0.lock().unwrap() = Some(map.as_slice().to_vec());
+                println!("got frame {}", map.as_slice().len());
                 Ok(gst::FlowSuccess::Ok)
             })
             .build(),
@@ -192,22 +203,6 @@ fn start_gst_pipeline(shared: SharedFrame) {
             _ => {}
         }
     }
-
-    appsink.set_callbacks(
-        AppSinkCallbacks::builder()
-            .new_sample(move |sink| {
-                let sample = sink.pull_sample().unwrap();
-                let buffer = sample.buffer().unwrap();
-                let map = buffer.map_readable().unwrap();
-                let bytes = map.as_slice();
-
-                let mut guard = shared.0.lock().unwrap();
-                *guard = Some(bytes.to_vec());
-                println!("test");
-                Ok(gst::FlowSuccess::Ok)
-            })
-            .build(),
-    );
 
     pipeline.set_state(gst::State::Playing).unwrap();
     // Keep the thread alive
@@ -234,4 +229,3 @@ fn upload_frame(
         }
     }
 }
-
