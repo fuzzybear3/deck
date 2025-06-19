@@ -83,74 +83,8 @@ fn setup(
     ));
 }
 
-// fn setup_gst_pipeline() -> Result<gst_app::AppSink, Box<dyn std::error::Error>> {
-//     gst::init()?; // must be called before using GStreamer
-//
-//     let pipeline = gst::parse::launch(
-//         "videotestsrc ! videoconvert ! video/x-raw,format=RGBA,width=640,height=480 ! appsink name=sink",
-//     )?;
-//
-//     let pipeline = pipeline.downcast::<gst::Pipeline>().unwrap();
-//     let appsink = pipeline
-//         .by_name("sink")
-//         .expect("Sink element not found")
-//         .downcast::<gst_app::AppSink>()
-//         .expect("Element is not an appsink");
-//
-//     appsink.set_property("emit-signals", &true);
-//     appsink.set_property("sync", &false);
-//
-//     pipeline.set_state(gst::State::Playing)?;
-//
-//     Ok(appsink)
-// }
-
 fn start_gst_pipeline(shared: SharedFrame) {
     gst::init().unwrap();
-
-    // let pipeline = gst::parse::launch(
-    //     // "videotestsrc ! videoconvert ! video/x-raw,format=RGBA,width=640,height=480 ! appsink name=sink",
-    //     //    "udpsrc port=5000 caps=\
-    //     // "video/x-raw,format=RGBA,width=640,height=480,framerate=30/1\" ! \
-    //     // appsink name=sink",
-    //     //    "video/x-raw,format=RGBA, encoding-name=H264 ,width=640,height=480,framerate=30/1\" ! \
-    //     // appsink name=sink",
-    //     // "udpsrc port=5000 caps=\"application/x-rtp,media=video,encoding-name=H264,payload=96\"
-    //     // ! rtph264depay ! avdec_h264 ! videoconvert ! video/x-raw,format=RGBA,width=640,height=480 ! appsink name=sink"
-    //     "\
-    // udpsrc port=5000 caps=\
-    //   \"application/x-rtp,media=video,encoding-name=H264,payload=96\" ! \
-    // rtph264depay ! avdec_h264 ! videoconvert ! \
-    // video/x-raw,format=RGBA,width=640,height=480 ! \
-    // appsink name=sink",
-    // )
-    // .unwrap()
-    // .downcast::<gst::Pipeline>()
-    // .unwrap();
-    //
-    // let appsink = pipeline
-    //     .by_name("sink")
-    //     .unwrap()
-    //     .downcast::<gst_app::AppSink>()
-    //     .unwrap();
-    //
-    // appsink.set_property("emit-signals", &true);
-    // appsink.set_property("sync", &false);
-
-    // let pipeline_str = "\
-    //      udpsrc port=5000 caps=\
-    //       \"application/x-rtp,media=video,encoding-name=H264,payload=96\" ! \
-    //     rtph264depay ! avdec_h264 ! videoconvert ! \
-    //     video/x-raw,format=RGBA,width=640,height=480 ! \
-    //     appsink name=sink";
-
-    //   let pipeline_str = "\
-    // udpsrc port=5000 caps=\
-    //   \"application/x-rtp,media=video,encoding-name=H264,\
-    //     payload=96,clock-rate=90000,packetization-mode=1\" ! \
-    // rtph264depay ! avdec_h264 ! videoconvert ! \
-    // video/x-raw,format=RGBA,width=640,height=480 ! \
-    // appsink name=sink";
 
     let pipeline_str = "\
   udpsrc port=5000 caps=\
@@ -183,7 +117,7 @@ fn start_gst_pipeline(shared: SharedFrame) {
                 let map = buffer.map_readable().unwrap();
 
                 *shared_clone.0.lock().unwrap() = Some(map.as_slice().to_vec());
-                println!("got frame {}", map.as_slice().len());
+                // println!("got frame {}", map.as_slice().len());
                 Ok(gst::FlowSuccess::Ok)
             })
             .build(),
